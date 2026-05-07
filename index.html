@@ -24,12 +24,21 @@
             z-index: 1;
         }
         .gpx-chart-container {
+            position: relative;
             height: 220px;
             width: 100%;
             padding: 12px 16px;
             box-sizing: border-box;
             background: #ffffff;
             border-top: 1px solid #e5e7eb;
+        }
+        @media (max-width: 768px) {
+            .gpx-map {
+                height: 280px;
+            }
+            .gpx-chart-container {
+                height: 200px;
+            }
         }
         .gpx-loading {
             padding: 40px;
@@ -71,7 +80,7 @@
     <div id="gpx-loading" class="gpx-loading">GPX 경로 데이터를 불러오는 중...</div>
     <div id="gpx-map" class="gpx-map" style="display: none;"></div>
     <div id="gpx-chart-container" class="gpx-chart-container" style="display: none;">
-        <canvas id="gpx-elevation-chart"></canvas>
+        <canvas id="gpx-elevation-chart" style="width: 100% !important; height: 100% !important;"></canvas>
     </div>
     <div id="gpx-summary" class="gpx-summary" style="display: none;">
         <div class="summary-item"><span class="summary-label">총 거리</span><span class="summary-value" id="summary-distance">-</span></div>
@@ -180,78 +189,9 @@
         if (maxElevation === -Infinity) maxElevation = 0;
         document.getElementById('summary-ele-maxmin').innerText = Math.round(maxElevation) + ' m / ' + Math.round(minElevation) + ' m';
 
-        // 4. 차트 업데이트 또는 생성
-        const ctx = document.getElementById('gpx-elevation-chart').getContext('2d');
-        const labels = chartData.map(d => d.x);
-        const dataPts = chartData.map(d => d.y);
-
-        if (gpxChartInstance) {
-            gpxChartInstance.data.labels = labels;
-            gpxChartInstance.data.datasets[0].data = dataPts;
-            gpxChartInstance.update();
-        } else {
-            gpxChartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '고도 (m)',
-                        data: dataPts,
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                        borderWidth: 2,
-                        fill: true,
-                        pointRadius: 0,
-                        pointHoverRadius: 6,
-                        pointHoverBackgroundColor: '#3b82f6',
-                        pointHoverBorderColor: '#ffffff',
-                        pointHoverBorderWidth: 2,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-                            titleFont: { size: 13, family: 'Inter' },
-                            bodyFont: { size: 14, family: 'Inter', weight: 'bold' },
-                            padding: 12,
-                            cornerRadius: 8,
-                            displayColors: false,
-                            callbacks: {
-                                title: function(context) { return '거리: ' + context[0].label + ' km'; },
-                                label: function(context) { return '고도: ' + context.raw + ' m'; }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: { display: true, title: { display: true, text: '거리 (km)', font: { family: 'Inter' } }, ticks: { maxTicksLimit: 10, font: { family: 'Inter' } }, grid: { display: false } },
-                        y: { display: true, title: { display: true, text: '고도 (m)', font: { family: 'Inter' } }, ticks: { font: { family: 'Inter' } }, grid: { color: '#f3f4f6' } }
-                    },
-                    onHover: (e, activeElements) => {
-                        if (activeElements.length > 0) {
-                            const index = activeElements[0].index;
-                            const point = chartData[index];
-                            if (mapInstance && hoverMarkerInstance) {
-                                if (!mapInstance.hasLayer(hoverMarkerInstance)) hoverMarkerInstance.addTo(mapInstance);
-                                hoverMarkerInstance.setLatLng([point.lat, point.lon]);
-                            }
-                        } else {
-                            if (mapInstance && hoverMarkerInstance && mapInstance.hasLayer(hoverMarkerInstance)) {
-                                mapInstance.removeLayer(hoverMarkerInstance);
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        // 5. 맵 그리기
-        if (!mapInstance) {
+        // 4. 맵 먼저 표시 (컨테이너를 visible로 전환)
+        const isFirstLoad = !mapInstance;
+        if (isFirstLoad) {
             document.getElementById('gpx-loading').style.display = 'none';
             document.getElementById('gpx-map').style.display = 'block';
             document.getElementById('gpx-chart-container').style.display = 'block';
@@ -264,6 +204,91 @@
             mapInstance.fitBounds(polyline.getBounds());
 
             hoverMarkerInstance = L.circleMarker([0,0], { radius: 7, fillColor: '#3b82f6', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 1 });
+        }
+
+        // 5. 차트 생성 또는 업데이트
+        // 모바일 호환성: 컨테이너가 visible 상태에서 차트를 생성해야 canvas 크기가 올바르게 계산됨
+        const labels = chartData.map(d => d.x);
+        const dataPts = chartData.map(d => d.y);
+
+        function createOrUpdateChart() {
+            const canvas = document.getElementById('gpx-elevation-chart');
+            const ctx = canvas.getContext('2d');
+
+            if (gpxChartInstance) {
+                gpxChartInstance.data.labels = labels;
+                gpxChartInstance.data.datasets[0].data = dataPts;
+                gpxChartInstance.update();
+            } else {
+                gpxChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '고도 (m)',
+                            data: dataPts,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                            borderWidth: 2,
+                            fill: true,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            pointHoverBackgroundColor: '#3b82f6',
+                            pointHoverBorderColor: '#ffffff',
+                            pointHoverBorderWidth: 2,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                                titleFont: { size: 13, family: 'Inter' },
+                                bodyFont: { size: 14, family: 'Inter', weight: 'bold' },
+                                padding: 12,
+                                cornerRadius: 8,
+                                displayColors: false,
+                                callbacks: {
+                                    title: function(context) { return '거리: ' + context[0].label + ' km'; },
+                                    label: function(context) { return '고도: ' + context.raw + ' m'; }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { display: true, title: { display: true, text: '거리 (km)', font: { family: 'Inter' } }, ticks: { maxTicksLimit: 10, font: { family: 'Inter' } }, grid: { display: false } },
+                            y: { display: true, title: { display: true, text: '고도 (m)', font: { family: 'Inter' } }, ticks: { font: { family: 'Inter' } }, grid: { color: '#f3f4f6' } }
+                        },
+                        onHover: (e, activeElements) => {
+                            if (activeElements.length > 0) {
+                                const index = activeElements[0].index;
+                                const point = chartData[index];
+                                if (mapInstance && hoverMarkerInstance) {
+                                    if (!mapInstance.hasLayer(hoverMarkerInstance)) hoverMarkerInstance.addTo(mapInstance);
+                                    hoverMarkerInstance.setLatLng([point.lat, point.lon]);
+                                }
+                            } else {
+                                if (mapInstance && hoverMarkerInstance && mapInstance.hasLayer(hoverMarkerInstance)) {
+                                    mapInstance.removeLayer(hoverMarkerInstance);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        if (isFirstLoad) {
+            // 첫 로드시: 컨테이너가 방금 visible로 전환됨
+            // 모바일 브라우저는 레이아웃 계산에 시간이 필요하므로 setTimeout 사용
+            setTimeout(() => {
+                createOrUpdateChart();
+            }, 100);
+        } else {
+            createOrUpdateChart();
         }
     }
 
