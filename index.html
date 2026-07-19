@@ -32,10 +32,13 @@
             position: relative;
             height: 220px;
             width: 100%;
-            padding: 12px 16px 2px 16px;
+            padding: 12px 16px 0px 16px;
             box-sizing: border-box;
             background: #ffffff;
             border-top: 1px solid #e5e7eb;
+        }
+        #gpx-elevation-chart {
+            display: block;
         }
         @media (max-width: 768px) {
             .gpx-map {
@@ -43,7 +46,7 @@
             }
             .gpx-chart-container {
                 height: 200px;
-                padding: 10px 12px 2px 12px;
+                padding: 10px 12px 0px 12px;
             }
         }
         .gpx-loading {
@@ -78,6 +81,9 @@
             font-weight: 600;
             font-size: 16px;
         }
+        .summary-value.highlight-green {
+            color: #10b981;
+        }
     </style>
 </head>
 <body>
@@ -90,7 +96,7 @@
     </div>
     <div id="gpx-summary" class="gpx-summary" style="display: none;">
         <div class="summary-item"><span class="summary-label">총 거리</span><span class="summary-value" id="summary-distance">-</span></div>
-        <div class="summary-item"><span class="summary-label">누적 상승고도</span><span class="summary-value" id="summary-ele-gain">-</span></div>
+        <div class="summary-item"><span class="summary-label">누적 상승고도</span><span class="summary-value highlight-green" id="summary-ele-gain">-</span></div>
         <div class="summary-item"><span class="summary-label">최고 / 최저 고도</span><span class="summary-value" id="summary-ele-maxmin">-</span></div>
     </div>
 </div>
@@ -206,16 +212,21 @@
             mapInstance = L.map('gpx-map', { scrollWheelZoom: false });
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(mapInstance);
 
-            const polyline = L.polyline(path, { color: '#ef4444', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(mapInstance);
+            const polyline = L.polyline(path, { color: '#10b981', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(mapInstance);
             mapInstance.fitBounds(polyline.getBounds());
 
-            hoverMarkerInstance = L.circleMarker([0,0], { radius: 7, fillColor: '#3b82f6', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 1 });
+            hoverMarkerInstance = L.circleMarker([0,0], { radius: 7, fillColor: '#10b981', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 1 });
         }
 
         // 5. 차트 생성 또는 업데이트
         // 모바일 호환성: 컨테이너가 visible 상태에서 차트를 생성해야 canvas 크기가 올바르게 계산됨
         const labels = chartData.map(d => d.x);
-        const dataPts = chartData.map(d => d.y);
+        const dataPts = chartData.map(d => parseFloat(d.y));
+
+        const eleRange = maxElevation - minElevation;
+        const eleBuffer = eleRange > 0 ? eleRange * 0.05 : 10;
+        const yMin = Math.max(0, Math.floor(minElevation - eleBuffer));
+        const yMax = Math.ceil(maxElevation + eleBuffer);
 
         function createOrUpdateChart() {
             const canvas = document.getElementById('gpx-elevation-chart');
@@ -233,13 +244,13 @@
                         datasets: [{
                             label: '고도 (m)',
                             data: dataPts,
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
                             borderWidth: 2,
                             fill: true,
                             pointRadius: 0,
                             pointHoverRadius: 6,
-                            pointHoverBackgroundColor: '#3b82f6',
+                            pointHoverBackgroundColor: '#10b981',
                             pointHoverBorderColor: '#ffffff',
                             pointHoverBorderWidth: 2,
                             tension: 0.4
@@ -267,30 +278,32 @@
                         layout: {
                             padding: {
                                 bottom: 0,
-                                top: 0
+                                top: 4
                             }
                         },
                         scales: {
                             x: {
                                 display: true,
-                                title: {
-                                    display: true,
-                                    text: '거리 (km)',
-                                    font: { family: 'Inter' },
-                                    padding: { top: 4, bottom: 0 }
+                                ticks: { 
+                                    maxTicksLimit: 10, 
+                                    font: { family: 'Inter', size: 10 }, 
+                                    padding: 2,
+                                    callback: function(value) {
+                                        return this.getLabelForValue(value) + ' km';
+                                    }
                                 },
-                                ticks: { maxTicksLimit: 10, font: { family: 'Inter' }, padding: 2 },
                                 grid: { display: false }
                             },
                             y: {
                                 display: true,
-                                title: {
-                                    display: true,
-                                    text: '고도 (m)',
-                                    font: { family: 'Inter' },
-                                    padding: { top: 0, bottom: 4 }
+                                min: yMin,
+                                max: yMax,
+                                ticks: { 
+                                    font: { family: 'Inter', size: 10 },
+                                    callback: function(value) {
+                                        return value + ' m';
+                                    }
                                 },
-                                ticks: { font: { family: 'Inter' } },
                                 grid: { color: '#f3f4f6' }
                             }
                         },
