@@ -22,7 +22,7 @@
             overflow: hidden;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             background: #ffffff;
-            height: auto;
+            height: auto !important;
             max-height: fit-content;
         }
         .gpx-map {
@@ -52,8 +52,8 @@
             }
             .gpx-summary {
                 height: auto !important;
-                max-height: fit-content;
-                flex: 0 0 auto;
+                max-height: fit-content !important;
+                flex: 0 0 auto !important;
                 align-items: center;
                 box-sizing: border-box;
             }
@@ -76,13 +76,14 @@
             background: #f9fafb;
             border-top: 1px solid #e5e7eb;
             font-size: 14px;
-            height: auto;
-            max-height: fit-content;
-            flex: 0 0 auto;
+            height: auto !important;
+            max-height: fit-content !important;
+            flex: 0 0 auto !important;
             box-sizing: border-box;
         }
         .summary-item {
             text-align: center;
+            height: auto;
         }
         .summary-label {
             display: block;
