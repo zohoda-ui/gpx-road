@@ -22,6 +22,8 @@
             overflow: hidden;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             background: #ffffff;
+            height: auto;
+            max-height: fit-content;
         }
         .gpx-map {
             height: 380px;
@@ -48,6 +50,13 @@
                 height: 200px;
                 padding: 10px 12px 0px 12px;
             }
+            .gpx-summary {
+                height: auto !important;
+                max-height: fit-content;
+                flex: 0 0 auto;
+                align-items: center;
+                box-sizing: border-box;
+            }
         }
         .gpx-loading {
             padding: 40px;
@@ -62,10 +71,15 @@
         .gpx-summary {
             display: flex;
             justify-content: space-around;
+            align-items: center;
             padding: 12px 16px;
             background: #f9fafb;
             border-top: 1px solid #e5e7eb;
             font-size: 14px;
+            height: auto;
+            max-height: fit-content;
+            flex: 0 0 auto;
+            box-sizing: border-box;
         }
         .summary-item {
             text-align: center;
