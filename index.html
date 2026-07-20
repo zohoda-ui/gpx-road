@@ -4,10 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPX Viewer</title>
-    <!-- Google Fonts Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -16,30 +12,16 @@
             padding: 0;
             background: #ffffff !important;
         }
-        :root {
-            --primary-color: #10b981;
-            --primary-hover: #059669;
-            --primary-light: rgba(16, 185, 129, 0.1);
-            --bg-color: #ffffff;
-            --muted-bg: #f9fafb;
-            --text-color: #111827;
-            --muted-text: #6b7280;
-            --border-color: #e5e7eb;
-            --card-bg: #ffffff;
-            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-        }
         .gpx-viewer-wrapper {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             width: 100%;
             max-width: 900px;
             margin: 0 auto;
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: var(--card-shadow);
-            background: var(--card-bg);
-            transition: all 0.3s ease;
-            height: fit-content;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            background: #ffffff;
         }
         .gpx-map {
             height: 380px;
@@ -52,17 +34,27 @@
             width: 100%;
             padding: 12px 16px 0px 16px;
             box-sizing: border-box;
-            background: var(--card-bg);
-            border-top: 1px solid var(--border-color);
-            transition: all 0.3s ease;
+            background: #ffffff;
+            border-top: 1px solid #e5e7eb;
+        }
+        #gpx-elevation-chart {
+            display: block;
+        }
+        @media (max-width: 768px) {
+            .gpx-map {
+                height: 280px;
+            }
+            .gpx-chart-container {
+                height: 200px;
+                padding: 10px 12px 0px 12px;
+            }
         }
         .gpx-loading {
-            padding: 50px 40px;
+            padding: 40px;
             text-align: center;
             font-size: 15px;
-            font-weight: 500;
-            color: var(--muted-text);
-            background: var(--card-bg);
+            color: #6b7280;
+            background: #f9fafb;
         }
         .leaflet-container {
             cursor: crosshair;
@@ -71,69 +63,26 @@
             display: flex;
             justify-content: space-around;
             padding: 12px 16px;
-            margin: 0;
-            height: auto;
-            background: var(--muted-bg);
-            border-top: 1px solid var(--border-color);
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
             font-size: 14px;
-            transition: all 0.3s ease;
         }
         .summary-item {
             text-align: center;
-            flex: 1;
-            transition: transform 0.2s ease;
-        }
-        .summary-item:not(:last-child) {
-            border-right: 1px solid var(--border-color);
         }
         .summary-label {
             display: block;
-            color: var(--muted-text);
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 6px;
+            color: #6b7280;
+            font-size: 12px;
+            margin-bottom: 4px;
         }
         .summary-value {
-            color: var(--text-color);
-            font-weight: 700;
-            font-size: 17px;
-            transition: color 0.3s ease;
+            color: #111827;
+            font-weight: 600;
+            font-size: 16px;
         }
         .summary-value.highlight-green {
-            color: var(--primary-color);
-        }
-        .summary-value.highlight-orange {
-            color: #f97316;
-        }
-        @media (max-width: 600px) {
-            .gpx-map {
-                height: 280px;
-            }
-            .gpx-chart-container {
-                height: 180px;
-                padding: 10px 10px 20px 10px;
-            }
-            .gpx-summary {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 8px 0;
-                padding: 12px 8px;
-            }
-            .summary-item {
-                border-right: none !important;
-            }
-            .summary-item:nth-child(odd) {
-                border-right: 1px solid var(--border-color) !important;
-            }
-            .summary-value {
-                font-size: 14px;
-            }
-            .summary-label {
-                font-size: 9px;
-                margin-bottom: 2px;
-            }
+            color: #10b981;
         }
     </style>
 </head>
@@ -149,7 +98,6 @@
         <div class="summary-item"><span class="summary-label">총 거리</span><span class="summary-value" id="summary-distance">-</span></div>
         <div class="summary-item"><span class="summary-label">누적 상승고도</span><span class="summary-value highlight-green" id="summary-ele-gain">-</span></div>
         <div class="summary-item"><span class="summary-label">최고 / 최저 고도</span><span class="summary-value" id="summary-ele-maxmin">-</span></div>
-        <div class="summary-item"><span class="summary-label">v/km</span><span class="summary-value highlight-orange" id="summary-vkm">-</span></div>
     </div>
 </div>
 
@@ -166,7 +114,6 @@
     let gpxChartInstance = null;
     let mapInstance = null;
     let hoverMarkerInstance = null;
-    let displayChartData = [];  // onHover에서 접근 가능하도록 상위 스코프
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
         const R = 6371; // 지구 반경 (km)
@@ -180,38 +127,9 @@
     }
 
     function processAndRender() {
-        // 0. GPX 파일의 데이터 밀도(포인트 간 평균 거리) 계산
-        let tempDistance = 0;
-        for (let i = 1; i < globalRawPoints.length; i++) {
-            tempDistance += calculateDistance(globalRawPoints[i-1].lat, globalRawPoints[i-1].lon, globalRawPoints[i].lat, globalRawPoints[i].lon);
-        }
-        const numPoints = globalRawPoints.length;
-        const avgSpacing = numPoints > 1 ? (tempDistance * 1000) / (numPoints - 1) : 0; // 단위: 미터
-
-        // 데이터 밀도(포인트 평균 간격)에 따라 스무딩 윈도우와 누적 임계값을 동적으로 결정하여 고도를 보정합니다.
-        let SMOOTHING_WINDOW = 2; // 기본값
-        let ELEVATION_THRESHOLD = 0.2; // 기본값
-
-        if (avgSpacing >= 55) {
-            // 포인트 간격이 55m 이상으로 극도로 넓은 경우 (예: go_daegwan 21k, 44k)
-            SMOOTHING_WINDOW = 1;      // 스무딩을 최소화하여 업힐 유실 방지
-            ELEVATION_THRESHOLD = 0.2;
-        } else if (avgSpacing >= 40) {
-            // 포인트 간격이 40m 이상으로 넓은 경우 (예: go_daegwan 10k)
-            SMOOTHING_WINDOW = 0;      // 스무딩 미적용 (원시 데이터 그대로 사용)
-            ELEVATION_THRESHOLD = 0.2;
-        } else if (avgSpacing >= 15) {
-            // 중간 밀도
-            SMOOTHING_WINDOW = 1;
-            ELEVATION_THRESHOLD = 0.2;
-        } else {
-            // 고밀도 스마트워치 기록 (포인트가 촘촘함: 약 15m 미만)
-            SMOOTHING_WINDOW = 2;      // GPS 튐 노이즈를 제거하기 위해 기본 스무딩 적용
-            ELEVATION_THRESHOLD = 0.2;
-        }
-
-        console.log(`[GPX 분석] 총 포인트: ${numPoints}개, 평균 포인트 간격: ${avgSpacing.toFixed(1)}m`);
-        console.log(`[동적 보정] SMOOTHING_WINDOW = ${SMOOTHING_WINDOW}, ELEVATION_THRESHOLD = ${ELEVATION_THRESHOLD}`);
+        // COROS 기기의 획득고도 알고리즘과 유사하게 맞추기 위한 파라미터 최적화 결과
+        const SMOOTHING_WINDOW = 4; // 스무딩 윈도우 크기 4
+        const ELEVATION_THRESHOLD = 0.6; // 고도 변화 임계값 0.6m
 
         // 1. 고도 데이터 스무딩
         const smoothedPoints = [];
@@ -269,8 +187,8 @@
             
             path.push([lat, lon]);
             chartData.push({
-                x: totalDistance,
-                y: ele,
+                x: totalDistance.toFixed(2),
+                y: ele.toFixed(1),
                 lat: lat,
                 lon: lon
             });
@@ -283,136 +201,9 @@
         if (maxElevation === -Infinity) maxElevation = 0;
         document.getElementById('summary-ele-maxmin').innerText = Math.round(maxElevation) + ' m / ' + Math.round(minElevation) + ' m';
 
-        const vkm = totalDistance > 0 ? (totalElevationGain / totalDistance).toFixed(1) : 0;
-        document.getElementById('summary-vkm').innerText = vkm;
-
-        // 4. 차트 업데이트 또는 생성 (linear 스케일용 {x, y} 포인트 배열)
-        const ctx = document.getElementById('gpx-elevation-chart').getContext('2d');
-
-        // 데이터 포인트가 너무 많으면 다운샘플링 (최대 800개)
-        const MAX_CHART_POINTS = 800;
-        if (chartData.length > MAX_CHART_POINTS) {
-            const step = Math.ceil(chartData.length / MAX_CHART_POINTS);
-            displayChartData = [];
-            for (let i = 0; i < chartData.length; i += step) {
-                displayChartData.push(chartData[i]);
-            }
-            // 항상 마지막 포인트 포함
-            const lastPt = chartData[chartData.length - 1];
-            if (displayChartData[displayChartData.length - 1] !== lastPt) {
-                displayChartData.push(lastPt);
-            }
-        } else {
-            displayChartData = chartData.slice();
-        }
-
-        const dataPts = displayChartData.map(d => ({ x: parseFloat(d.x), y: parseFloat(d.y) }));
-
-        const isDark = false;
-        const primaryColor = '#10b981';
-        const textColor = '#6b7280';
-        const gridColor = '#f3f4f6';
-
-        const eleRange = maxElevation - minElevation;
-        const eleBuffer = eleRange > 0 ? eleRange * 0.05 : 10;
-        const yMin = Math.max(0, Math.floor(minElevation - eleBuffer));
-        const yMax = Math.ceil(maxElevation + eleBuffer);
-
-        if (gpxChartInstance) {
-            gpxChartInstance.data.datasets[0].data = dataPts;
-            gpxChartInstance.update();
-        } else {
-            gpxChartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    datasets: [{
-                        label: '고도 (m)',
-                        data: dataPts,
-                        borderColor: primaryColor,
-                        backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.12)',
-                        borderWidth: 2,
-                        fill: true,
-                        pointRadius: 0,
-                        pointHoverRadius: 6,
-                        pointHoverBackgroundColor: primaryColor,
-                        pointHoverBorderColor: isDark ? '#111827' : '#ffffff',
-                        pointHoverBorderWidth: 2,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    layout: {
-                        padding: {
-                            bottom: 12,
-                            top: 8,
-                            left: 4,
-                            right: 4
-                        }
-                    },
-                    interaction: { mode: 'nearest', axis: 'x', intersect: false },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: isDark ? 'rgba(31, 41, 55, 0.95)' : 'rgba(17, 24, 39, 0.95)',
-                            titleColor: isDark ? '#f3f4f6' : '#ffffff',
-                            bodyColor: isDark ? '#f3f4f6' : '#ffffff',
-                            titleFont: { size: 12, family: 'Inter', weight: 'normal' },
-                            bodyFont: { size: 13, family: 'Inter', weight: 'bold' },
-                            padding: 10,
-                            cornerRadius: 8,
-                            displayColors: false,
-                            callbacks: {
-                                title: function(context) { return '거리: ' + context[0].parsed.x.toFixed(2) + ' km'; },
-                                label: function(context) { return '고도: ' + context.parsed.y.toFixed(1) + ' m'; }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            type: 'linear',
-                            display: true,
-                            ticks: {
-                                maxTicksLimit: 10,
-                                color: textColor,
-                                font: { family: 'Inter', size: 10 },
-                                callback: function(value) { return value.toFixed(1) + ' km'; }
-                            },
-                            grid: { display: false }
-                        },
-                        y: {
-                            display: true,
-                            min: yMin,
-                            max: yMax,
-                            ticks: { 
-                                color: textColor,
-                                font: { family: 'Inter', size: 10 },
-                                callback: function(value) { return value + ' m'; }
-                            },
-                            grid: { color: gridColor }
-                        }
-                    },
-                    onHover: (e, activeElements) => {
-                        if (activeElements.length > 0) {
-                            const index = activeElements[0].index;
-                            const point = displayChartData[index];
-                            if (point && mapInstance && hoverMarkerInstance) {
-                                if (!mapInstance.hasLayer(hoverMarkerInstance)) hoverMarkerInstance.addTo(mapInstance);
-                                hoverMarkerInstance.setLatLng([point.lat, point.lon]);
-                            }
-                        } else {
-                            if (mapInstance && hoverMarkerInstance && mapInstance.hasLayer(hoverMarkerInstance)) {
-                                mapInstance.removeLayer(hoverMarkerInstance);
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        // 5. 맵 그리기
-        if (!mapInstance) {
+        // 4. 맵 먼저 표시 (컨테이너를 visible로 전환)
+        const isFirstLoad = !mapInstance;
+        if (isFirstLoad) {
             document.getElementById('gpx-loading').style.display = 'none';
             document.getElementById('gpx-map').style.display = 'block';
             document.getElementById('gpx-chart-container').style.display = 'block';
@@ -421,20 +212,128 @@
             mapInstance = L.map('gpx-map', { scrollWheelZoom: false });
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(mapInstance);
 
-            const polyline = L.polyline(path, { color: primaryColor, weight: 5, opacity: 0.85, lineJoin: 'round' }).addTo(mapInstance);
-            
-            // Fix Leaflet sizing bug in dynamically visible containers
-            setTimeout(() => {
-                mapInstance.invalidateSize();
-                mapInstance.fitBounds(polyline.getBounds());
-            }, 200);
+            const polyline = L.polyline(path, { color: '#10b981', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(mapInstance);
+            mapInstance.fitBounds(polyline.getBounds());
 
-            hoverMarkerInstance = L.circleMarker([0,0], { radius: 6, fillColor: primaryColor, color: isDark ? '#111827' : '#ffffff', weight: 2, opacity: 1, fillOpacity: 1 });
+            hoverMarkerInstance = L.circleMarker([0,0], { radius: 7, fillColor: '#10b981', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 1 });
+        }
 
-            // 모바일 호환: 컨테이너가 visible 된 후 차트 크기 재계산
+        // 5. 차트 생성 또는 업데이트
+        // 모바일 호환성: 컨테이너가 visible 상태에서 차트를 생성해야 canvas 크기가 올바르게 계산됨
+        const labels = chartData.map(d => d.x);
+        const dataPts = chartData.map(d => parseFloat(d.y));
+
+        const eleRange = maxElevation - minElevation;
+        const eleBuffer = eleRange > 0 ? eleRange * 0.05 : 10;
+        const yMin = Math.max(0, Math.floor(minElevation - eleBuffer));
+        const yMax = Math.ceil(maxElevation + eleBuffer);
+
+        function createOrUpdateChart() {
+            const canvas = document.getElementById('gpx-elevation-chart');
+            const ctx = canvas.getContext('2d');
+
             if (gpxChartInstance) {
-                setTimeout(() => { gpxChartInstance.resize(); }, 150);
+                gpxChartInstance.data.labels = labels;
+                gpxChartInstance.data.datasets[0].data = dataPts;
+                gpxChartInstance.update();
+            } else {
+                gpxChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '고도 (m)',
+                            data: dataPts,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                            borderWidth: 2,
+                            fill: true,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            pointHoverBackgroundColor: '#10b981',
+                            pointHoverBorderColor: '#ffffff',
+                            pointHoverBorderWidth: 2,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                                titleFont: { size: 13, family: 'Inter' },
+                                bodyFont: { size: 14, family: 'Inter', weight: 'bold' },
+                                padding: 12,
+                                cornerRadius: 8,
+                                displayColors: false,
+                                callbacks: {
+                                    title: function(context) { return '거리: ' + context[0].label + ' km'; },
+                                    label: function(context) { return '고도: ' + context.raw + ' m'; }
+                                }
+                            }
+                        },
+                        layout: {
+                            padding: {
+                                bottom: 0,
+                                top: 4
+                            }
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                ticks: { 
+                                    maxTicksLimit: 10, 
+                                    font: { family: 'Inter', size: 10 }, 
+                                    padding: 2,
+                                    callback: function(value) {
+                                        return this.getLabelForValue(value) + ' km';
+                                    }
+                                },
+                                grid: { display: false }
+                            },
+                            y: {
+                                display: true,
+                                min: yMin,
+                                max: yMax,
+                                ticks: { 
+                                    font: { family: 'Inter', size: 10 },
+                                    callback: function(value) {
+                                        return value + ' m';
+                                    }
+                                },
+                                grid: { color: '#f3f4f6' }
+                            }
+                        },
+                        onHover: (e, activeElements) => {
+                            if (activeElements.length > 0) {
+                                const index = activeElements[0].index;
+                                const point = chartData[index];
+                                if (mapInstance && hoverMarkerInstance) {
+                                    if (!mapInstance.hasLayer(hoverMarkerInstance)) hoverMarkerInstance.addTo(mapInstance);
+                                    hoverMarkerInstance.setLatLng([point.lat, point.lon]);
+                                }
+                            } else {
+                                if (mapInstance && hoverMarkerInstance && mapInstance.hasLayer(hoverMarkerInstance)) {
+                                    mapInstance.removeLayer(hoverMarkerInstance);
+                                }
+                            }
+                        }
+                    }
+                });
             }
+        }
+
+        if (isFirstLoad) {
+            // 첫 로드시: 컨테이너가 방금 visible로 전환됨
+            // 모바일 브라우저는 레이아웃 계산에 시간이 필요하므로 setTimeout 사용
+            setTimeout(() => {
+                createOrUpdateChart();
+            }, 100);
+        } else {
+            createOrUpdateChart();
         }
     }
 
