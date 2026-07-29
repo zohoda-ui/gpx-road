@@ -118,6 +118,49 @@
         .leaflet-container {
             cursor: crosshair;
         }
+        .gpx-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            padding: 16px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        @media (max-width: 768px) {
+            .gpx-summary {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                padding: 12px;
+            }
+        }
+        .summary-item {
+            text-align: center;
+            padding: 8px 6px;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        .summary-label {
+            display: block;
+            color: #6b7280;
+            font-size: 11px;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        .summary-value {
+            color: #111827;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .summary-value.highlight-green {
+            color: #10b981;
+        }
+        .summary-value.highlight-blue {
+            color: #3b82f6;
+        }
 
     </style>
 </head>
@@ -134,6 +177,12 @@
     <div id="gpx-map" class="gpx-map" style="display: none;"></div>
     <div id="gpx-chart-container" class="gpx-chart-container" style="display: none;">
         <canvas id="gpx-elevation-chart"></canvas>
+    </div>
+    <div id="gpx-summary" class="gpx-summary" style="display: none;">
+        <div class="summary-item"><span class="summary-label">총 거리</span><span class="summary-value" id="summary-distance">-</span></div>
+        <div class="summary-item"><span class="summary-label">실제 D+</span><span class="summary-value highlight-green" id="summary-ele-gain">-</span></div>
+        <div class="summary-item"><span class="summary-label">실제 D-</span><span class="summary-value highlight-blue" id="summary-ele-loss">-</span></div>
+        <div class="summary-item"><span class="summary-label">최고/최저 고도</span><span class="summary-value" id="summary-ele-maxmin">-</span></div>
     </div>
 
 </div>
@@ -821,9 +870,13 @@
             courseDesc += `뚜렷한 오르막과 내리막이 섞여 있는 주로로, 초반 오버페이스를 방지하고 언덕에서 페이스 조절을 세밀하게 해 주어야 후반 페이스 저하를 막을 수 있는 레이스 안배가 필수적인 코스입니다.`;
         }
 
-        // 7. UI 업데이트 (콘솔 로그만 유지)
+        // 7. UI 업데이트
         if (minElevation === Infinity) minElevation = 0;
         if (maxElevation === -Infinity) maxElevation = 0;
+        document.getElementById('summary-distance').innerText = totalDistance.toFixed(2) + ' km';
+        document.getElementById('summary-ele-gain').innerText = Math.round(actualEleGain) + ' m';
+        document.getElementById('summary-ele-loss').innerText = Math.round(actualEleLoss) + ' m';
+        document.getElementById('summary-ele-maxmin').innerText = Math.round(maxElevation) + ' m / ' + Math.round(minElevation) + ' m';
 
         const elapsed = (performance.now() - t0).toFixed(0);
         console.group("📊 [Runruun GPX Road Analysis] - Elevation Calculation Comparison");
@@ -1008,6 +1061,7 @@
             setLoadingStep('step-chart');
             document.getElementById('gpx-loading').style.display = 'none';
             document.getElementById('gpx-chart-container').style.display = 'block';
+            document.getElementById('gpx-summary').style.display = 'grid';
 
 
             // ④ 빠른 분석 (GPX 기반 — 즉시)
