@@ -118,111 +118,7 @@
         .leaflet-container {
             cursor: crosshair;
         }
-        .gpx-summary {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            padding: 16px;
-            background: #f9fafb;
-            border-top: 1px solid #e5e7eb;
-            font-size: 13px;
-            box-sizing: border-box;
-        }
-        @media (max-width: 768px) {
-            .gpx-summary {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 10px;
-                padding: 12px;
-            }
-        }
-        .summary-item {
-            text-align: center;
-            padding: 8px 6px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-        }
-        .summary-label {
-            display: block;
-            color: #6b7280;
-            font-size: 11px;
-            margin-bottom: 4px;
-            font-weight: 500;
-        }
-        .summary-value {
-            color: #111827;
-            font-weight: 600;
-            font-size: 14px;
-        }
-        .summary-value.highlight-green {
-            color: #10b981;
-        }
-        .summary-value.highlight-blue {
-            color: #3b82f6;
-        }
-        .gpx-description-box {
-            padding: 16px;
-            background: #ffffff;
-            border-top: 1px solid #e5e7eb;
-            font-size: 13.5px;
-            line-height: 1.6;
-            color: #374151;
-        }
-        .gpx-description-title {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 6px;
-            color: #111827;
-            font-size: 14.5px;
-            font-weight: 700;
-        }
-        /* 분석 모드 토글 */
-        .analysis-mode-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 16px;
-            background: #f0fdf4;
-            border-top: 1px solid #e5e7eb;
-            font-size: 12px;
-            color: #374151;
-        }
-        .mode-toggle-group {
-            display: flex;
-            gap: 6px;
-        }
-        .mode-btn {
-            padding: 5px 14px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            background: #ffffff;
-            font-size: 12px;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.2s;
-            color: #374151;
-        }
-        .mode-btn.active {
-            background: #10b981;
-            color: #ffffff;
-            border-color: #10b981;
-            font-weight: 600;
-        }
-        .mode-btn:hover:not(.active) {
-            background: #f3f4f6;
-        }
-        .mode-status {
-            font-size: 11px;
-            color: #6b7280;
-        }
-        .mode-status.loading {
-            color: #f59e0b;
-        }
-        .mode-status.done {
-            color: #10b981;
-        }
+
     </style>
 </head>
 <body>
@@ -239,30 +135,7 @@
     <div id="gpx-chart-container" class="gpx-chart-container" style="display: none;">
         <canvas id="gpx-elevation-chart"></canvas>
     </div>
-    <div id="analysis-mode-bar" class="analysis-mode-bar" style="display: none;">
-        <div>
-            <span style="font-weight: 600;">📊 분석 모드</span>
-        </div>
-        <div class="mode-toggle-group">
-            <button id="btn-fast" class="mode-btn active" onclick="switchMode('fast')">⚡ 빠른 분석</button>
-            <button id="btn-precise" class="mode-btn" onclick="switchMode('precise')">🔬 정밀 분석</button>
-        </div>
-        <div id="mode-status" class="mode-status">GPX 기반 · 1초 이내</div>
-    </div>
-    <div id="gpx-summary" class="gpx-summary" style="display: none;">
-        <div class="summary-item"><span class="summary-label">총 거리</span><span class="summary-value" id="summary-distance">-</span></div>
-        <div class="summary-item"><span class="summary-label">실제 D+</span><span class="summary-value highlight-green" id="summary-ele-gain">-</span></div>
-        <div class="summary-item"><span class="summary-label">실제 D-</span><span class="summary-value highlight-blue" id="summary-ele-loss">-</span></div>
-        <div class="summary-item"><span class="summary-label">최고/최저 고도</span><span class="summary-value" id="summary-ele-maxmin">-</span></div>
-        <div class="summary-item"><span class="summary-label">체감 난이도</span><span class="summary-value highlight-green" id="summary-course-type">-</span></div>
-        <div class="summary-item"><span class="summary-label">PB 적합도</span><span class="summary-value highlight-blue" id="summary-pb-fit">-</span></div>
-        <div class="summary-item"><span class="summary-label">가장 긴 업힐</span><span class="summary-value" id="summary-longest-uphill">-</span></div>
-        <div class="summary-item"><span class="summary-label">최대 / 평균 경사</span><span class="summary-value" id="summary-slope-info">-</span></div>
-    </div>
-    <div id="gpx-description-box" class="gpx-description-box" style="display: none;">
-        <div class="gpx-description-title">🏁 코스 분석 가이드</div>
-        <div id="course-description-text">-</div>
-    </div>
+
 </div>
 
 <!-- Leaflet JS -->
@@ -948,20 +821,9 @@
             courseDesc += `뚜렷한 오르막과 내리막이 섞여 있는 주로로, 초반 오버페이스를 방지하고 언덕에서 페이스 조절을 세밀하게 해 주어야 후반 페이스 저하를 막을 수 있는 레이스 안배가 필수적인 코스입니다.`;
         }
 
-        // 7. UI 업데이트
-        document.getElementById('summary-distance').innerText = totalDistance.toFixed(2) + ' km';
-        document.getElementById('summary-ele-gain').innerText = Math.round(actualEleGain) + ' m';
-        document.getElementById('summary-ele-loss').innerText = Math.round(actualEleLoss) + ' m';
+        // 7. UI 업데이트 (콘솔 로그만 유지)
         if (minElevation === Infinity) minElevation = 0;
         if (maxElevation === -Infinity) maxElevation = 0;
-        document.getElementById('summary-ele-maxmin').innerText = Math.round(maxElevation) + ' m / ' + Math.round(minElevation) + ' m';
-        document.getElementById('summary-course-type').innerText = courseType.split(' ')[0];
-        document.getElementById('summary-pb-fit').innerText = pbRating;
-        document.getElementById('summary-longest-uphill').innerText = longestUphillDist > 0
-            ? `${(longestUphillDist / 1000).toFixed(2)}km (+${Math.round(longestUphillEle)}m)`
-            : '-';
-        document.getElementById('summary-slope-info').innerText = `${maxSlope.toFixed(1)}% / ${avgSlope.toFixed(1)}%`;
-        document.getElementById('course-description-text').innerText = courseDesc;
 
         const elapsed = (performance.now() - t0).toFixed(0);
         console.group("📊 [Runruun GPX Road Analysis] - Elevation Calculation Comparison");
@@ -1095,74 +957,7 @@
         }
     }
 
-    // ===== 분석 모드 전환 =====
-    async function switchMode(mode) {
-        if (mode === currentMode) return;
-        currentMode = mode;
 
-        document.getElementById('btn-fast').className = mode === 'fast' ? 'mode-btn active' : 'mode-btn';
-        document.getElementById('btn-precise').className = mode === 'precise' ? 'mode-btn active' : 'mode-btn';
-
-        const statusEl = document.getElementById('mode-status');
-
-        if (mode === 'fast') {
-            statusEl.textContent = 'GPX 기반 · 1초 이내';
-            statusEl.className = 'mode-status done';
-            // 원본 GPX 고도로 재분석
-            const fastPoints = globalRawPoints.map(p => ({ ...p, ele: p.originalEle || p.ele }));
-            const cleaned = hampelFilter(removeSpikes(fastPoints, 35), 5, 3);
-            processAndRender(cleaned);
-        } else {
-            statusEl.textContent = 'DEM 데이터 다운로드 중...';
-            statusEl.className = 'mode-status loading';
-
-            try {
-                let demPoints = await fetchCopernicusElevations(globalRawPoints);
-                statusEl.textContent = 'OSM 보정 중...';
-
-                // DEM 이상치 보정
-                demPoints = compareAndRestoreOriginalElevations(demPoints, 20);
-
-                // OSM 스파이크 감지
-                let suspiciousPoints = [];
-                for (let i = 1; i < demPoints.length; i++) {
-                    const ele1 = demPoints[i-1].ele;
-                    const ele2 = demPoints[i].ele;
-                    if (ele1 !== null && ele2 !== null) {
-                        const d = haversineDistanceMeters(demPoints[i-1].lat, demPoints[i-1].lon, demPoints[i].lat, demPoints[i].lon);
-                        if (d > 0 && (Math.abs(ele2 - ele1) / d) * 100 > 35) {
-                            suspiciousPoints.push({ lat: demPoints[i].lat, lon: demPoints[i].lon, idx: i });
-                        }
-                    }
-                }
-
-                if (suspiciousPoints.length > 0) {
-                    try {
-                        const enriched = await fetchOsmTagsForCoords(suspiciousPoints, 30);
-                        enriched.forEach((p, index) => {
-                            if (p.wayTags) {
-                                const origIdx = suspiciousPoints[index].idx;
-                                demPoints[origIdx].wayTags = p.wayTags;
-                            }
-                        });
-                    } catch (e) { console.error("Overpass enrichment failed", e); }
-                }
-
-                demPoints = adjustOsmElevations(demPoints);
-                demPoints = removeSpikes(demPoints, 35);
-                demPoints = hampelFilter(demPoints, 5, 3);
-
-                statusEl.textContent = 'DEM 기반 · 정밀 완료';
-                statusEl.className = 'mode-status done';
-                processAndRender(demPoints);
-            } catch (e) {
-                console.error('Precise mode failed:', e);
-                statusEl.textContent = 'DEM 오류 — GPX로 복원';
-                statusEl.className = 'mode-status';
-                switchMode('fast');
-            }
-        }
-    }
 
     // ===== 메인 초기화 (2단계 로딩) =====
     async function initGpxViewer() {
@@ -1213,9 +1008,7 @@
             setLoadingStep('step-chart');
             document.getElementById('gpx-loading').style.display = 'none';
             document.getElementById('gpx-chart-container').style.display = 'block';
-            document.getElementById('gpx-summary').style.display = 'grid';
-            document.getElementById('gpx-description-box').style.display = 'block';
-            document.getElementById('analysis-mode-bar').style.display = 'flex';
+
 
             // ④ 빠른 분석 (GPX 기반 — 즉시)
             setLoadingStep('step-analysis');
