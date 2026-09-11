@@ -161,7 +161,6 @@
         .summary-value.highlight-blue {
             color: #3b82f6;
         }
-
     </style>
 </head>
 <body>
@@ -180,903 +179,224 @@
     </div>
     <div id="gpx-summary" class="gpx-summary" style="display: none;">
         <div class="summary-item"><span class="summary-label">총 거리</span><span class="summary-value" id="summary-distance">-</span></div>
-        <div class="summary-item"><span class="summary-label">실제 D+</span><span class="summary-value highlight-green" id="summary-ele-gain">-</span></div>
-        <div class="summary-item"><span class="summary-label">실제 D-</span><span class="summary-value highlight-blue" id="summary-ele-loss">-</span></div>
+        <div class="summary-item"><span class="summary-label">누적 상승 (D+)</span><span class="summary-value highlight-green" id="summary-ele-gain">-</span></div>
+        <div class="summary-item"><span class="summary-label">누적 하강 (D-)</span><span class="summary-value highlight-blue" id="summary-ele-loss">-</span></div>
         <div class="summary-item"><span class="summary-label">최고/최저 고도</span><span class="summary-value" id="summary-ele-maxmin">-</span></div>
     </div>
-
 </div>
 
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- RunRuun Elevation Engine (Production Standard) -->
+<script src="runruun-elevation.js"></script>
 
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     const GPX_URL = urlParams.get('url');
 
-    let globalRawPoints = [];
     let gpxChartInstance = null;
     let mapInstance = null;
     let hoverMarkerInstance = null;
-    let currentMode = 'fast';
-    let demCacheKey = '';
+    let displayChartData = [];
 
-    // ===== 유틸리티 함수 =====
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-    }
-
-    function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
-        const R = 6371000;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-    }
-
-    // ===== 로딩 단계 표시 =====
-    function setLoadingStep(stepId) {
+    function setLoadingStep(activeId) {
         const steps = ['step-read', 'step-map', 'step-chart', 'step-analysis', 'step-done'];
-        const targetIdx = steps.indexOf(stepId);
+        const activeIdx = steps.indexOf(activeId);
         steps.forEach((id, idx) => {
             const el = document.getElementById(id);
             if (!el) return;
-            if (idx < targetIdx) {
-                el.className = 'loading-step done';
-            } else if (idx === targetIdx) {
-                el.className = 'loading-step active';
-            } else {
-                el.className = 'loading-step pending';
-            }
+            el.className = 'loading-step';
+            if (idx < activeIdx) el.classList.add('done');
+            else if (idx === activeIdx) el.classList.add('active');
+            else el.classList.add('pending');
         });
     }
 
-    // ===== 포인트 다운샘플링 (최소 간격 기반) =====
-    function downsamplePoints(points, minIntervalMeters = 10) {
-        if (points.length <= 600) return points;
-        
-        const result = [points[0]];
-        let lastPt = points[0];
-        
-        for (let i = 1; i < points.length - 1; i++) {
-            const d = haversineDistanceMeters(lastPt.lat, lastPt.lon, points[i].lat, points[i].lon);
-            if (d >= minIntervalMeters) {
-                result.push(points[i]);
-                lastPt = points[i];
+    function renderAnalysis(result, rawPoints) {
+        const stats = result.stats;
+        const chartData = stats.chartData || [];
+
+        // 1. 요약 통계 출력 (RunRuun Production 정규 통계)
+        const totalDist = typeof stats.totalDist === 'number' ? stats.totalDist : (stats.rawTotalDistKm || 0);
+        const eleGain = typeof stats.eleGain === 'number' ? stats.eleGain : 0;
+        const eleLoss = typeof stats.eleLoss === 'number' ? stats.eleLoss : 0;
+        const maxEle = typeof stats.maxEle === 'number' ? stats.maxEle : 0;
+        const minEle = typeof stats.minEle === 'number' ? stats.minEle : 0;
+
+        document.getElementById('summary-distance').innerText = totalDist.toFixed(2) + ' km';
+        document.getElementById('summary-ele-gain').innerText = Math.round(eleGain) + ' m';
+        document.getElementById('summary-ele-loss').innerText = Math.round(eleLoss) + ' m';
+        document.getElementById('summary-ele-maxmin').innerText = Math.round(maxEle) + 'm / ' + Math.round(minEle) + 'm';
+
+        // 2. 지도 좌표
+        const path = (rawPoints && rawPoints.length > 0 ? rawPoints : (result.points || [])).map(pt => [pt.lat, pt.lon]);
+
+        // 3. 차트 포인트 다운샘플링 (최대 800개)
+        const MAX_CHART_POINTS = 800;
+        if (chartData.length > MAX_CHART_POINTS) {
+            const step = Math.ceil(chartData.length / MAX_CHART_POINTS);
+            displayChartData = [];
+            for (let i = 0; i < chartData.length; i += step) {
+                displayChartData.push(chartData[i]);
             }
-        }
-        result.push(points[points.length - 1]); // 항상 마지막 점 포함
-        return result;
-    }
-
-    // ===== Savitzky-Golay Filter =====
-    function savitzkyGolaySmooth(points, windowSize = 11) {
-        const n = points.length;
-        if (n < windowSize) return points.map(p => ({...p}));
-
-        const coeffs = [-36, 9, 44, 69, 84, 89, 84, 69, 44, 9, -36];
-        const denom = 429;
-        const coeffs7 = [-2, 3, 6, 7, 6, 3, -2];
-        const denom7 = 21;
-        const smoothed = points.map(p => ({...p}));
-
-        for (let i = 0; i < n; i++) {
-            if (i < 5 || i > n - 6) {
-                if (i >= 3 && i <= n - 4) {
-                    let sum = 0;
-                    for (let k = -3; k <= 3; k++) {
-                        sum += points[i + k].ele * coeffs7[k + 3];
-                    }
-                    smoothed[i].ele = sum / denom7;
-                } else {
-                    let sum = 0;
-                    let count = 0;
-                    for (let k = Math.max(0, i - 2); k <= Math.min(n - 1, i + 2); k++) {
-                        sum += points[k].ele;
-                        count++;
-                    }
-                    smoothed[i].ele = sum / count;
-                }
-            } else {
-                let sum = 0;
-                for (let k = -5; k <= 5; k++) {
-                    sum += points[i + k].ele * coeffs[k + 5];
-                }
-                smoothed[i].ele = sum / denom;
+            const lastPt = chartData[chartData.length - 1];
+            if (displayChartData[displayChartData.length - 1] !== lastPt) {
+                displayChartData.push(lastPt);
             }
-        }
-        return smoothed;
-    }
-
-    // ===== Hampel Filter =====
-    function hampelFilter(points, windowSize = 5, thresholdFactor = 3) {
-        if (!points || points.length <= windowSize) return points;
-        const n = points.length;
-        const half = Math.floor(windowSize / 2);
-        const result = points.map(p => ({ ...p }));
-
-        for (let i = 0; i < n; i++) {
-            const start = Math.max(0, i - half);
-            const end = Math.min(n - 1, i + half);
-            const windowValues = [];
-            for (let j = start; j <= end; j++) {
-                if (points[j].ele !== null && points[j].ele !== undefined) {
-                    windowValues.push(points[j].ele);
-                }
-            }
-            if (windowValues.length === 0) continue;
-            windowValues.sort((a, b) => a - b);
-            const median = windowValues[Math.floor(windowValues.length / 2)];
-            const diffs = windowValues.map(v => Math.abs(v - median));
-            diffs.sort((a, b) => a - b);
-            const mad = diffs[Math.floor(diffs.length / 2)];
-            const scaleLimit = thresholdFactor * Math.max(mad, 1.0);
-            if (Math.abs(points[i].ele - median) > scaleLimit) {
-                result[i].ele = Math.round(median * 10) / 10;
-            }
-        }
-        return result;
-    }
-
-    // ===== Spike 제거 =====
-    function removeSpikes(points, maxSlopePct = 35) {
-        if (!points || points.length <= 2) return points;
-        const n = points.length;
-        const resultEles = points.map(p => p.ele);
-        let hasSpike = false;
-        let inSpikeSection = false;
-        let spikeStartEle = 0;
-        let spikeStartIdx = -1;
-
-        for (let i = 1; i < n; i++) {
-            const p1 = points[i - 1];
-            const p2 = points[i];
-            const d = haversineDistanceMeters(p1.lat, p1.lon, p2.lat, p2.lon);
-            if (d === 0) continue;
-
-            const ele1 = resultEles[i - 1];
-            const ele2 = resultEles[i];
-            if (ele1 === null || ele2 === null || isNaN(ele1) || isNaN(ele2)) continue;
-
-            const dh = ele2 - ele1;
-            const slope = (dh / d) * 100;
-
-            if (!inSpikeSection) {
-                if (Math.abs(slope) > maxSlopePct) {
-                    inSpikeSection = true;
-                    spikeStartIdx = i;
-                    spikeStartEle = ele1;
-                }
-            } else {
-                const diffFromStart = Math.abs(ele2 - spikeStartEle);
-                if (diffFromStart <= 5.0) {
-                    for (let k = spikeStartIdx; k < i; k++) resultEles[k] = null;
-                    hasSpike = true;
-                    inSpikeSection = false;
-                } else if (Math.abs(slope) > maxSlopePct) {
-                    for (let k = spikeStartIdx; k <= i; k++) resultEles[k] = null;
-                    hasSpike = true;
-                    inSpikeSection = false;
-                }
-            }
-        }
-        if (inSpikeSection) {
-            for (let k = spikeStartIdx; k < n; k++) resultEles[k] = null;
-            hasSpike = true;
-        }
-        if (hasSpike) {
-            const filled = fillMissingElevations(resultEles);
-            return points.map((p, idx) => ({ ...p, ele: filled[idx] }));
-        }
-        return points;
-    }
-
-    function fillMissingElevations(elevations) {
-        const n = elevations.length;
-        if (n === 0) return [];
-        const result = [...elevations];
-        let firstValidIdx = -1;
-        for (let i = 0; i < n; i++) {
-            if (result[i] !== null && result[i] !== undefined && !isNaN(result[i]) && result[i] !== 0) {
-                firstValidIdx = i;
-                break;
-            }
-        }
-        if (firstValidIdx === -1) return new Array(n).fill(100);
-        for (let i = 0; i < firstValidIdx; i++) result[i] = result[firstValidIdx];
-        let lastValidValue = result[firstValidIdx];
-        let gapStartIdx = -1;
-        for (let i = firstValidIdx + 1; i < n; i++) {
-            const val = result[i];
-            const isValid = val !== null && val !== undefined && !isNaN(val) && val !== 0;
-            if (!isValid) {
-                if (gapStartIdx === -1) gapStartIdx = i;
-            } else {
-                if (gapStartIdx !== -1) {
-                    const startVal = lastValidValue;
-                    const endVal = val;
-                    const gapLen = i - gapStartIdx;
-                    for (let k = 0; k < gapLen; k++) {
-                        const ratio = (k + 1) / (gapLen + 1);
-                        result[gapStartIdx + k] = Math.round((startVal + (endVal - startVal) * ratio) * 10) / 10;
-                    }
-                    gapStartIdx = -1;
-                }
-                lastValidValue = val;
-            }
-        }
-        if (gapStartIdx !== -1) {
-            for (let i = gapStartIdx; i < n; i++) result[i] = lastValidValue;
-        }
-        return result;
-    }
-
-    // ===== DEM 보정 관련 (정밀 분석 전용) =====
-    function compareAndRestoreOriginalElevations(points, maxDiffMeters = 20) {
-        if (!points || points.length === 0) return points;
-        return points.map(p => {
-            let currentEle = p.ele;
-            if (p.originalEle !== null && p.originalEle !== undefined && p.originalEle !== 0) {
-                if (Math.abs(p.ele - p.originalEle) > maxDiffMeters) {
-                    currentEle = p.originalEle;
-                }
-            }
-            return { ...p, ele: currentEle };
-        });
-    }
-
-    function adjustOsmElevations(points) {
-        if (!points || points.length <= 2) return points;
-        const n = points.length;
-        const isSpecialSection = (p) => {
-            if (!p || !p.wayTags) return false;
-            const tags = p.wayTags.toLowerCase();
-            if (tags.includes('tunnel=yes') || tags.includes('location=underground')) return true;
-            if (tags.includes('bridge=yes')) return true;
-            if (tags.includes('layer=')) {
-                const match = tags.match(/layer=([-\d]+)/);
-                if (match && match[1] !== '0') return true;
-            }
-            return false;
-        };
-        const dists = new Array(n).fill(0);
-        let totalDist = 0;
-        for (let i = 1; i < n; i++) {
-            totalDist += haversineDistanceMeters(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
-            dists[i] = totalDist;
-        }
-        const resultEles = points.map(p => p.ele);
-        let inSection = false;
-        let sectionStartIdx = -1;
-        for (let i = 0; i < n; i++) {
-            const isSpecial = isSpecialSection(points[i]);
-            if (isSpecial && !inSection) {
-                inSection = true;
-                sectionStartIdx = i;
-            } else if (!isSpecial && inSection) {
-                inSection = false;
-                _interpolateSection(points, resultEles, dists, sectionStartIdx, i - 1);
-            }
-        }
-        if (inSection) _interpolateSection(points, resultEles, dists, sectionStartIdx, n - 1);
-        return points.map((p, idx) => ({ ...p, ele: resultEles[idx] }));
-    }
-
-    function _interpolateSection(points, eleArray, dists, startIdx, endIdx) {
-        const n = points.length;
-        const anchorStartIdx = Math.max(0, startIdx - 1);
-        const anchorEndIdx = Math.min(n - 1, endIdx + 1);
-        const eleStart = eleArray[anchorStartIdx];
-        const eleEnd = eleArray[anchorEndIdx];
-        const distStart = dists[anchorStartIdx];
-        const distEnd = dists[anchorEndIdx];
-        const distSpan = distEnd - distStart;
-        for (let k = startIdx; k <= endIdx; k++) {
-            if (distSpan > 0) {
-                const ratio = (dists[k] - distStart) / distSpan;
-                eleArray[k] = Math.round((eleStart + (eleEnd - eleStart) * ratio) * 10) / 10;
-            } else {
-                eleArray[k] = eleStart;
-            }
-        }
-    }
-
-    // ===== IndexedDB DEM 캐시 =====
-    const DEM_CACHE_DB = 'gpx-dem-cache';
-    const DEM_CACHE_STORE = 'elevations';
-
-    function openDemCacheDB() {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open(DEM_CACHE_DB, 1);
-            req.onupgradeneeded = () => {
-                const db = req.result;
-                if (!db.objectStoreNames.contains(DEM_CACHE_STORE)) {
-                    db.createObjectStore(DEM_CACHE_STORE);
-                }
-            };
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        });
-    }
-
-    async function getDemCache(key) {
-        try {
-            const db = await openDemCacheDB();
-            return new Promise((resolve) => {
-                const tx = db.transaction(DEM_CACHE_STORE, 'readonly');
-                const store = tx.objectStore(DEM_CACHE_STORE);
-                const req = store.get(key);
-                req.onsuccess = () => resolve(req.result || null);
-                req.onerror = () => resolve(null);
-            });
-        } catch { return null; }
-    }
-
-    async function setDemCache(key, data) {
-        try {
-            const db = await openDemCacheDB();
-            const tx = db.transaction(DEM_CACHE_STORE, 'readwrite');
-            tx.objectStore(DEM_CACHE_STORE).put(data, key);
-        } catch (e) { console.warn('DEM cache write failed:', e); }
-    }
-
-    function generateCacheKey(points) {
-        // 첫 3점 + 마지막 1점 + 포인트 수로 키 생성
-        const p0 = points[0];
-        const p1 = points[Math.min(1, points.length - 1)];
-        const p2 = points[Math.min(2, points.length - 1)];
-        const pn = points[points.length - 1];
-        return `dem_${p0.lat.toFixed(5)}_${p0.lon.toFixed(5)}_${p1.lat.toFixed(5)}_${pn.lat.toFixed(5)}_${pn.lon.toFixed(5)}_${points.length}`;
-    }
-
-    // ===== DEM 고도 보충 조회 (샘플링 + 보간) =====
-    async function fetchCopernicusElevations(points) {
-        if (!points || points.length === 0) return points;
-
-        // 캐시 확인
-        const cacheKey = generateCacheKey(points);
-        const cached = await getDemCache(cacheKey);
-        if (cached && cached.length === points.length) {
-            console.log('📦 DEM 캐시 사용');
-            return points.map((p, i) => ({ ...p, ele: cached[i] !== null ? cached[i] : p.ele }));
-        }
-
-        // 200m 간격으로 샘플링
-        const sampleIndices = [0];
-        let lastSamplePt = points[0];
-        for (let i = 1; i < points.length; i++) {
-            const d = haversineDistanceMeters(lastSamplePt.lat, lastSamplePt.lon, points[i].lat, points[i].lon);
-            if (d >= 200) {
-                sampleIndices.push(i);
-                lastSamplePt = points[i];
-            }
-        }
-        if (sampleIndices[sampleIndices.length - 1] !== points.length - 1) {
-            sampleIndices.push(points.length - 1);
-        }
-
-        console.log(`🌍 DEM 조회: ${sampleIndices.length}개 샘플 (전체 ${points.length}개 중)`);
-
-        // 샘플 좌표만 API 호출
-        const sampleCoords = sampleIndices.map(i => points[i]);
-        const sampleEles = new Array(sampleIndices.length).fill(null);
-        const BATCH_SIZE = 100;
-
-        for (let i = 0; i < sampleCoords.length; i += BATCH_SIZE) {
-            const batch = sampleCoords.slice(i, i + BATCH_SIZE);
-            const lats = batch.map(c => c.lat.toFixed(6)).join(',');
-            const lons = batch.map(c => c.lon.toFixed(6)).join(',');
-            try {
-                const url = `https://elevation-api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`;
-                const res = await fetch(url);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && Array.isArray(data.elevation)) {
-                        for (let j = 0; j < data.elevation.length; j++) {
-                            if (data.elevation[j] !== null && !isNaN(data.elevation[j])) {
-                                sampleEles[i + j] = Math.round(data.elevation[j] * 10) / 10;
-                            }
-                        }
-                    }
-                }
-            } catch (err) {
-                console.warn("DEM fetch batch error:", err);
-            }
-        }
-
-        // 전체 포인트에 선형 보간 적용
-        const allEles = new Array(points.length).fill(null);
-        for (let s = 0; s < sampleIndices.length; s++) {
-            allEles[sampleIndices[s]] = sampleEles[s];
-        }
-
-        // 샘플 사이를 선형 보간
-        for (let s = 0; s < sampleIndices.length - 1; s++) {
-            const startIdx = sampleIndices[s];
-            const endIdx = sampleIndices[s + 1];
-            const startEle = allEles[startIdx];
-            const endEle = allEles[endIdx];
-            if (startEle === null || endEle === null) continue;
-            for (let i = startIdx + 1; i < endIdx; i++) {
-                const ratio = (i - startIdx) / (endIdx - startIdx);
-                allEles[i] = Math.round((startEle + (endEle - startEle) * ratio) * 10) / 10;
-            }
-        }
-
-        // 캐시 저장
-        await setDemCache(cacheKey, allEles);
-
-        return points.map((p, idx) => ({
-            ...p,
-            ele: allEles[idx] !== null ? allEles[idx] : p.ele
-        }));
-    }
-
-    // ===== OSM 태그 조회 (정밀 분석 전용) =====
-    function fetchOsmTagsForCoords(coords, radiusMeters = 30) {
-        if (!coords || coords.length === 0) return Promise.resolve(coords);
-        let query = "[out:json];(";
-        coords.forEach(c => {
-            query += `way(around:${radiusMeters},${c.lat},${c.lon});`;
-        });
-        query += ");out tags geom;";
-
-        return fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: query })
-            .then(res => {
-                if (!res.ok) return coords;
-                return res.json().then(data => {
-                    if (!data || !data.elements) return coords;
-                    const ways = data.elements.filter(el => el.type === "way" && el.tags);
-                    return coords.map(c => {
-                        let matchedWay = null;
-                        let minDist = radiusMeters;
-                        ways.forEach(w => {
-                            if (w.tags.bridge || w.tags.tunnel || w.tags.layer || w.tags.location) {
-                                if (w.geometry) {
-                                    w.geometry.forEach(g => {
-                                        const d = haversineDistanceMeters(c.lat, c.lon, g.lat, g.lon);
-                                        if (d < minDist) { minDist = d; matchedWay = w; }
-                                    });
-                                }
-                            }
-                        });
-                        if (matchedWay) {
-                            const tags = matchedWay.tags;
-                            const tagStrList = [];
-                            if (tags.bridge) tagStrList.push(`bridge=${tags.bridge}`);
-                            if (tags.tunnel) tagStrList.push(`tunnel=${tags.tunnel}`);
-                            if (tags.layer) tagStrList.push(`layer=${tags.layer}`);
-                            if (tags.location) tagStrList.push(`location=${tags.location}`);
-                            return { ...c, wayTags: tagStrList.join(" ") };
-                        }
-                        return c;
-                    });
-                });
-            })
-            .catch(e => { console.error("Overpass API query error:", e); return coords; });
-    }
-
-    // ===== 핵심 분석 엔진 (동기 — processAndRender) =====
-    function processAndRender(points) {
-        if (!points || points.length === 0) return;
-
-        const t0 = performance.now();
-
-        // --- 검증 비교용 사전 계산 ---
-        // A. 원본 GPX D+ 계산 (Hysteresis 0.1m)
-        let originalGain = 0;
-        let lastOrigEle = points[0].ele;
-        for (let i = 1; i < points.length; i++) {
-            const diff = points[i].ele - lastOrigEle;
-            if (diff > 0.1) { originalGain += diff; lastOrigEle = points[i].ele; }
-            else if (diff < -0.1) { lastOrigEle = points[i].ele; }
-        }
-
-        // B. 단순 이동평균 D+
-        const simpleSmoothed = [];
-        const SMA_WINDOW = 4;
-        for (let i = 0; i < points.length; i++) {
-            let sum = 0, count = 0;
-            const start = Math.max(0, i - SMA_WINDOW);
-            const end = Math.min(points.length - 1, i + SMA_WINDOW);
-            for (let j = start; j <= end; j++) { sum += points[j].ele; count++; }
-            simpleSmoothed.push(sum / count);
-        }
-        let simpleGain = 0;
-        let lastSimpleEle = simpleSmoothed[0];
-        for (let i = 1; i < simpleSmoothed.length; i++) {
-            const diff = simpleSmoothed[i] - lastSimpleEle;
-            if (diff > 0.6) { simpleGain += diff; lastSimpleEle = simpleSmoothed[i]; }
-            else if (diff < -0.6) { lastSimpleEle = simpleSmoothed[i]; }
-        }
-
-        // 1. 하이브리드 스무딩 (SG + MA)
-        const sgSmoothed = savitzkyGolaySmooth(points, 11);
-        const smoothedPoints = [];
-        const MA_WINDOW = 10;
-        for (let i = 0; i < sgSmoothed.length; i++) {
-            let sum = 0, count = 0;
-            const start = Math.max(0, i - MA_WINDOW);
-            const end = Math.min(sgSmoothed.length - 1, i + MA_WINDOW);
-            for (let j = start; j <= end; j++) { sum += sgSmoothed[j].ele; count++; }
-            smoothedPoints.push({ lat: sgSmoothed[i].lat, lon: sgSmoothed[i].lon, ele: sum / count });
-        }
-
-        // 2. 거리 계산
-        const path = [];
-        const chartData = [];
-        let totalDistance = 0;
-        let maxElevation = -Infinity;
-        let minElevation = Infinity;
-
-        const dists = [0];
-        let runningDist = 0;
-        for (let i = 1; i < smoothedPoints.length; i++) {
-            runningDist += calculateDistance(smoothedPoints[i-1].lat, smoothedPoints[i-1].lon, smoothedPoints[i].lat, smoothedPoints[i].lon) * 1000;
-            dists.push(runningDist);
-        }
-        totalDistance = runningDist / 1000;
-
-        // 3. 실제 D+/D- (Hysteresis 0.5m)
-        let actualEleGain = 0, actualEleLoss = 0;
-        let lastEleGain = smoothedPoints[0].ele;
-        let lastEleLoss = smoothedPoints[0].ele;
-
-        for (let i = 1; i < smoothedPoints.length; i++) {
-            const ele = smoothedPoints[i].ele;
-            const diffGain = ele - lastEleGain;
-            if (diffGain > 0.5) { actualEleGain += diffGain; lastEleGain = ele; }
-            else if (diffGain < -0.5) { lastEleGain = ele; }
-            const diffLoss = ele - lastEleLoss;
-            if (diffLoss < -0.5) { actualEleLoss += Math.abs(diffLoss); lastEleLoss = ele; }
-            else if (diffLoss > 0.5) { lastEleLoss = ele; }
-        }
-
-        // 4. 체감 세그먼트 분석
-        let currentTrend = 0, trendStartIdx = 0, trendDistance = 0;
-        const segments = [];
-
-        for (let i = 1; i < smoothedPoints.length; i++) {
-            const prev = smoothedPoints[i-1];
-            const curr = smoothedPoints[i];
-            const segDist = dists[i] - dists[i-1];
-            const dh = curr.ele - prev.ele;
-            let newTrend = 0;
-            if (dh > 0.02) newTrend = 1;
-            else if (dh < -0.02) newTrend = -1;
-
-            if (i === 1) {
-                currentTrend = newTrend;
-                trendStartIdx = 0;
-                trendDistance = segDist;
-            } else {
-                if (newTrend === currentTrend && newTrend !== 0) {
-                    trendDistance += segDist;
-                } else {
-                    segments.push({
-                        trend: currentTrend,
-                        startIdx: trendStartIdx,
-                        endIdx: i - 1,
-                        distance: trendDistance,
-                        eleDelta: smoothedPoints[i-1].ele - smoothedPoints[trendStartIdx].ele
-                    });
-                    currentTrend = newTrend;
-                    trendStartIdx = i - 1;
-                    trendDistance = segDist;
-                }
-            }
-        }
-        segments.push({
-            trend: currentTrend,
-            startIdx: trendStartIdx,
-            endIdx: smoothedPoints.length - 1,
-            distance: trendDistance,
-            eleDelta: smoothedPoints[smoothedPoints.length - 1].ele - smoothedPoints[trendStartIdx].ele
-        });
-
-        const MIN_UPHILL_DIST_METERS = 150;
-        const MIN_ELEVATION_THRESHOLD = 4.0;
-        const MIN_UPHILL_SLOPE_PCT = 1.2;
-
-        let perceivedEleGain = 0;
-        let longestUphillDist = 0;
-        let longestUphillEle = 0;
-        let maxSlope = 0;
-        let slopeSum = 0;
-        let slopeCount = 0;
-
-        segments.forEach(seg => {
-            const slope = seg.distance > 0 ? (Math.abs(seg.eleDelta) / seg.distance) * 100 : 0;
-            if (seg.trend === 1) {
-                if (seg.distance >= MIN_UPHILL_DIST_METERS && seg.eleDelta >= MIN_ELEVATION_THRESHOLD && slope >= MIN_UPHILL_SLOPE_PCT) {
-                    perceivedEleGain += seg.eleDelta;
-                    if (seg.distance > longestUphillDist) {
-                        longestUphillDist = seg.distance;
-                        longestUphillEle = seg.eleDelta;
-                    }
-                    if (slope > maxSlope) maxSlope = slope;
-                    slopeSum += slope;
-                    slopeCount++;
-                }
-            } else if (seg.trend === -1) {
-                const absDelta = Math.abs(seg.eleDelta);
-                if (seg.distance >= MIN_UPHILL_DIST_METERS && absDelta >= MIN_ELEVATION_THRESHOLD && slope >= MIN_UPHILL_SLOPE_PCT) {
-                    if (slope > maxSlope) maxSlope = slope;
-                    slopeSum += slope;
-                    slopeCount++;
-                }
-            }
-        });
-
-        const avgSlope = slopeCount > 0 ? slopeSum / slopeCount : 0;
-
-        // 고도 최고/최저
-        for (let i = 0; i < smoothedPoints.length; i++) {
-            const pt = smoothedPoints[i];
-            if (pt.ele > maxElevation) maxElevation = pt.ele;
-            if (pt.ele < minElevation) minElevation = pt.ele;
-            path.push([pt.lat, pt.lon]);
-            chartData.push({
-                x: (dists[i] / 1000).toFixed(2),
-                y: pt.ele.toFixed(1),
-                lat: pt.lat,
-                lon: pt.lon
-            });
-        }
-
-        // 5. 코스 체감 분류
-        const normalizedActualGain10k = (actualEleGain / totalDistance) * 10;
-        const hasSignificantHills = perceivedEleGain > 0 && longestUphillDist > 200;
-        let courseType = "", pbRating = "";
-        let rawGrade = 0;
-        if (normalizedActualGain10k <= 50) rawGrade = 1;
-        else if (normalizedActualGain10k <= 100) rawGrade = 2;
-        else if (normalizedActualGain10k <= 150) rawGrade = 3;
-        else if (normalizedActualGain10k <= 200) rawGrade = 4;
-        else rawGrade = 5;
-
-        let adjustedGrade = rawGrade;
-        if (!hasSignificantHills && rawGrade > 1) adjustedGrade = rawGrade - 1;
-
-        switch (adjustedGrade) {
-            case 1: courseType = "평지형 (매우 쉬움)"; pbRating = "★★★★★"; break;
-            case 2: courseType = "약한 롤링 (쉬움)"; pbRating = "★★★★☆"; break;
-            case 3: courseType = "롤링 (보통)"; pbRating = "★★★☆☆"; break;
-            case 4: courseType = "강한 롤링 (다소 어려움)"; pbRating = "★★☆☆☆"; break;
-            default: courseType = "업다운 코스 (어려움)"; pbRating = "★☆☆☆☆"; break;
-        }
-
-        // 6. 블로그 설명
-        let courseDesc = `실제 누적상승(D+)은 약 ${Math.round(actualEleGain)}m로 분석되었습니다. `;
-        if (adjustedGrade <= 1) {
-            courseDesc += `경사 변화가 거의 없는 아주 평탄한 도로 코스입니다. 초반부터 일정한 크루즈 페이스를 편안하게 유지하기 좋으며, 개인 최고 기록(PB) 경신 및 초보자 완주에 최적화된 고속 주로입니다.`;
-        } else if (adjustedGrade <= 2) {
-            courseDesc += `다만 대부분의 상승은 짧고 완만하게 분포되어 있어 체감 난이도는 수치보다 낮은 편입니다. 긴 업힐은 거의 없으며, 완만한 롤링 지형이 반복되는 코스로 페이스 운영이 중요합니다.`;
-        } else if (adjustedGrade <= 3) {
-            courseDesc += `잔잔한 오르막과 내리막이 번갈아 나타나는 롤링 지형입니다. 오르막에서 자세를 숙이고 케이던스를 높여 일정한 심박수를 유지하는 것이 핵심입니다.`;
         } else {
-            courseDesc += `뚜렷한 오르막과 내리막이 섞여 있는 주로로, 초반 오버페이스를 방지하고 언덕에서 페이스 조절을 세밀하게 해 주어야 후반 페이스 저하를 막을 수 있는 레이스 안배가 필수적인 코스입니다.`;
+            displayChartData = chartData.slice();
         }
 
-        // 7. UI 업데이트
-        if (minElevation === Infinity) minElevation = 0;
-        if (maxElevation === -Infinity) maxElevation = 0;
-        document.getElementById('summary-distance').innerText = totalDistance.toFixed(2) + ' km';
-        document.getElementById('summary-ele-gain').innerText = Math.round(actualEleGain) + ' m';
-        document.getElementById('summary-ele-loss').innerText = Math.round(actualEleLoss) + ' m';
-        document.getElementById('summary-ele-maxmin').innerText = Math.round(maxElevation) + ' m / ' + Math.round(minElevation) + ' m';
+        const dataPts = displayChartData.map(d => ({ x: parseFloat(d.x), y: parseFloat(d.y) }));
+        const eleRange = maxEle - minEle;
+        const eleBuffer = eleRange > 0 ? eleRange * 0.05 : 10;
+        const yMin = Math.max(0, Math.floor(minEle - eleBuffer));
+        const yMax = Math.ceil(maxEle + eleBuffer);
 
-        const elapsed = (performance.now() - t0).toFixed(0);
-        console.group("📊 [Runruun GPX Road Analysis] - Elevation Calculation Comparison");
-        console.log(`⏱️ 분석 소요 시간: ${elapsed}ms`);
-        console.log(`- 모드: ${currentMode === 'fast' ? '⚡ 빠른 분석 (GPX 기반)' : '🔬 정밀 분석 (DEM 기반)'}`);
-        console.log(`- 포인트 수: ${points.length}`);
-        console.log(`- 원본 GPX D+ (노이즈 미제거, 0.1m): ${Math.round(originalGain)}m`);
-        console.log(`- 단순 스무딩 D+ (이동평균 윈도우4, 0.6m): ${Math.round(simpleGain)}m`);
-        console.log(`- DEM + 4차 보정 실제 D+ (하이브리드 필터 10포인트): ${Math.round(actualEleGain)}m`);
-        console.log(`- 체감 누적 상승 D+ (150m 지속, 4.0m, 1.2% 임계치): ${Math.round(perceivedEleGain)}m`);
-        console.log(`- 체감 난이도 등급: ${courseType}`);
-        console.log(`- PB 적합도: ${pbRating}`);
-        console.log(`\n👉 최종 추천 D+: ${Math.round(actualEleGain)}m (체감 난이도: ${courseType.split(' ')[0]}, PB 적합도: ${pbRating})`);
-        console.groupEnd();
+        const canvas = document.getElementById('gpx-elevation-chart');
+        const ctx = canvas.getContext('2d');
 
-        // 8. 맵
-        const isFirstLoad = !mapInstance;
-        if (isFirstLoad) {
+        if (gpxChartInstance) {
+            gpxChartInstance.data.datasets[0].data = dataPts;
+            gpxChartInstance.options.scales.y.min = yMin;
+            gpxChartInstance.options.scales.y.max = yMax;
+            gpxChartInstance.update('none');
+        } else {
+            gpxChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: '고도 (m)',
+                        data: dataPts,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderWidth: 2,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: '#10b981',
+                        pointHoverBorderColor: '#ffffff',
+                        pointHoverBorderWidth: 2,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                            titleFont: { size: 13, family: 'Inter' },
+                            bodyFont: { size: 14, family: 'Inter', weight: 'bold' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                title: function(context) { return '거리: ' + context[0].parsed.x.toFixed(2) + ' km'; },
+                                label: function(context) { return '고도: ' + context.parsed.y.toFixed(1) + ' m'; }
+                            }
+                        }
+                    },
+                    layout: { padding: { bottom: 0, top: 4 } },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            display: true,
+                            ticks: {
+                                maxTicksLimit: 10,
+                                font: { family: 'Inter', size: 10 },
+                                padding: 2,
+                                callback: function(value) { return value.toFixed(1) + ' km'; }
+                            },
+                            grid: { display: false }
+                        },
+                        y: {
+                            display: true,
+                            min: yMin,
+                            max: yMax,
+                            ticks: {
+                                font: { family: 'Inter', size: 10 },
+                                callback: function(value) { return value + ' m'; }
+                            },
+                            grid: { color: '#f3f4f6' }
+                        }
+                    },
+                    onHover: (e, activeElements) => {
+                        if (activeElements.length > 0) {
+                            const index = activeElements[0].index;
+                            const point = displayChartData[index];
+                            if (mapInstance && hoverMarkerInstance && point) {
+                                if (!mapInstance.hasLayer(hoverMarkerInstance)) hoverMarkerInstance.addTo(mapInstance);
+                                hoverMarkerInstance.setLatLng([point.lat, point.lon]);
+                            }
+                        } else {
+                            if (mapInstance && hoverMarkerInstance && mapInstance.hasLayer(hoverMarkerInstance)) {
+                                mapInstance.removeLayer(hoverMarkerInstance);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 4. 지도 렌더링
+        if (!mapInstance) {
+            document.getElementById('gpx-loading').style.display = 'none';
             document.getElementById('gpx-map').style.display = 'block';
+            document.getElementById('gpx-chart-container').style.display = 'block';
+            document.getElementById('gpx-summary').style.display = 'grid';
+
             mapInstance = L.map('gpx-map', { scrollWheelZoom: false });
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(mapInstance);
-            const polyline = L.polyline(path, { color: '#10b981', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(mapInstance);
-            mapInstance.fitBounds(polyline.getBounds());
-            hoverMarkerInstance = L.circleMarker([0,0], { radius: 7, fillColor: '#10b981', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 1 });
-        }
 
-        // 9. 차트
-        const labels = chartData.map(d => d.x);
-        const dataPts = chartData.map(d => parseFloat(d.y));
-        const eleRange = maxElevation - minElevation;
-        const eleBuffer = eleRange > 0 ? eleRange * 0.05 : 10;
-        const yMin = Math.max(0, Math.floor(minElevation - eleBuffer));
-        const yMax = Math.ceil(maxElevation + eleBuffer);
+            const polyline = L.polyline(path, { color: '#10b981', weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(mapInstance);
+            
+            setTimeout(() => {
+                mapInstance.invalidateSize();
+                mapInstance.fitBounds(polyline.getBounds());
+            }, 200);
 
-        function createOrUpdateChart() {
-            const canvas = document.getElementById('gpx-elevation-chart');
-            const ctx = canvas.getContext('2d');
+            hoverMarkerInstance = L.circleMarker([0,0], { radius: 6, fillColor: '#10b981', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 1 });
 
             if (gpxChartInstance) {
-                gpxChartInstance.data.labels = labels;
-                gpxChartInstance.data.datasets[0].data = dataPts;
-                gpxChartInstance.options.scales.y.min = yMin;
-                gpxChartInstance.options.scales.y.max = yMax;
-                gpxChartInstance.update('none'); // 애니메이션 없이 즉시 업데이트
-            } else {
-                gpxChartInstance = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: '고도 (m)',
-                            data: dataPts,
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                            borderWidth: 2,
-                            fill: true,
-                            pointRadius: 0,
-                            pointHoverRadius: 6,
-                            pointHoverBackgroundColor: '#10b981',
-                            pointHoverBorderColor: '#ffffff',
-                            pointHoverBorderWidth: 2,
-                            tension: 0.4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        animation: false,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                backgroundColor: 'rgba(17, 24, 39, 0.9)',
-                                titleFont: { size: 13, family: 'Inter' },
-                                bodyFont: { size: 14, family: 'Inter', weight: 'bold' },
-                                padding: 12,
-                                cornerRadius: 8,
-                                displayColors: false,
-                                callbacks: {
-                                    title: function(context) { return '거리: ' + context[0].label + ' km'; },
-                                    label: function(context) { return '고도: ' + context.raw + ' m'; }
-                                }
-                            }
-                        },
-                        layout: { padding: { bottom: 0, top: 4 } },
-                        scales: {
-                            x: {
-                                display: true,
-                                ticks: {
-                                    maxTicksLimit: 10,
-                                    font: { family: 'Inter', size: 10 },
-                                    padding: 2,
-                                    callback: function(value) { return this.getLabelForValue(value) + ' km'; }
-                                },
-                                grid: { display: false }
-                            },
-                            y: {
-                                display: true,
-                                min: yMin,
-                                max: yMax,
-                                ticks: {
-                                    font: { family: 'Inter', size: 10 },
-                                    callback: function(value) { return value + ' m'; }
-                                },
-                                grid: { color: '#f3f4f6' }
-                            }
-                        },
-                        onHover: (e, activeElements) => {
-                            if (activeElements.length > 0) {
-                                const index = activeElements[0].index;
-                                const point = chartData[index];
-                                if (mapInstance && hoverMarkerInstance) {
-                                    if (!mapInstance.hasLayer(hoverMarkerInstance)) hoverMarkerInstance.addTo(mapInstance);
-                                    hoverMarkerInstance.setLatLng([point.lat, point.lon]);
-                                }
-                            } else {
-                                if (mapInstance && hoverMarkerInstance && mapInstance.hasLayer(hoverMarkerInstance)) {
-                                    mapInstance.removeLayer(hoverMarkerInstance);
-                                }
-                            }
-                        }
-                    }
-                });
+                setTimeout(() => { gpxChartInstance.resize(); }, 150);
             }
-        }
-
-        if (isFirstLoad) {
-            setTimeout(() => { createOrUpdateChart(); }, 50);
-        } else {
-            createOrUpdateChart();
         }
     }
 
-
-
-    // ===== 메인 초기화 (2단계 로딩) =====
     async function initGpxViewer() {
-        const totalT0 = performance.now();
-
         try {
             if (!GPX_URL) {
                 document.getElementById('gpx-loading').innerHTML = '<div style="padding:40px;text-align:center;font-size:15px;color:#6b7280;">GPX URL이 제공되지 않았습니다.<br>iframe 주소 뒤에 <code>?url=깃허브Raw주소</code>를 추가해주세요.</div>';
                 return;
             }
 
-            // ① GPX 파일 읽기
             setLoadingStep('step-read');
             const response = await fetch(GPX_URL);
             if (!response.ok) throw new Error('네트워크 응답이 정상이 아닙니다.');
             const gpxText = await response.text();
 
-            const parser = new DOMParser();
-            const gpxDom = parser.parseFromString(gpxText, "text/xml");
-            const trkpts = gpxDom.getElementsByTagName('trkpt');
-            if (trkpts.length === 0) {
-                document.getElementById('gpx-loading').innerHTML = '<div style="padding:40px;text-align:center;font-size:15px;color:#6b7280;">유효한 GPX 경로(trkpt) 데이터가 없습니다.</div>';
-                return;
+            if (typeof RunruunElevationEngine === 'undefined') {
+                throw new Error('RunRuun 고도 엔진(RunruunElevationEngine)을 불러올 수 없습니다.');
             }
 
-            // 포인트 파싱
-            const allPoints = [];
-            for (let i = 0; i < trkpts.length; i++) {
-                const pt = trkpts[i];
-                const lat = parseFloat(pt.getAttribute('lat'));
-                const lon = parseFloat(pt.getAttribute('lon'));
-                const eleNode = pt.getElementsByTagName('ele')[0];
-                const ele = eleNode ? parseFloat(eleNode.textContent) : 0;
-                allPoints.push({ lat, lon, ele, originalEle: ele });
-            }
-
-            // 다운샘플링 (10m 간격)
-            globalRawPoints = downsamplePoints(allPoints, 10);
-            console.log(`📍 GPX 포인트: ${allPoints.length} → ${globalRawPoints.length} (다운샘플링)`);
-
-            // ② 지도 생성
-            setLoadingStep('step-map');
-            
-            // 로딩 숨기고 컨테이너 표시 (다음 프레임에)
-            await new Promise(r => requestAnimationFrame(r));
-
-            // ③ 고도 그래프 생성
-            setLoadingStep('step-chart');
-            document.getElementById('gpx-loading').style.display = 'none';
-            document.getElementById('gpx-chart-container').style.display = 'block';
-            document.getElementById('gpx-summary').style.display = 'grid';
-
-
-            // ④ 빠른 분석 (GPX 기반 — 즉시)
             setLoadingStep('step-analysis');
-            const cleaned = hampelFilter(removeSpikes(globalRawPoints, 35), 5, 3);
-            processAndRender(cleaned);
+            const result = await RunruunElevationEngine.processGpx(gpxText, { profile: 'road' });
+            const rawParsed = RunruunElevationEngine.parseGpx(gpxText);
 
-            // ⑤ 완료
+            setLoadingStep('step-map');
+            setLoadingStep('step-chart');
+            renderAnalysis(result, rawParsed.points);
             setLoadingStep('step-done');
-            const totalElapsed = (performance.now() - totalT0).toFixed(0);
-            console.log(`✅ 전체 로딩 완료: ${totalElapsed}ms`);
 
         } catch (error) {
             console.error('GPX 로딩 에러:', error);
-            document.getElementById('gpx-loading').innerHTML = '<div style="padding:40px;text-align:center;font-size:15px;color:#6b7280;">데이터를 불러오는 데 실패했습니다. URL을 확인해주세요.</div>';
+            document.getElementById('gpx-loading').innerHTML = '<div style="padding:40px;text-align:center;font-size:15px;color:#6b7280;">데이터를 불러오는 데 실패했습니다. URL을 확인해주세요. (' + error.message + ')</div>';
         }
     }
 
